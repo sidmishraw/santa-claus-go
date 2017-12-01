@@ -1,46 +1,14 @@
-elf  2
-elf  3
-elf  7
-elf  8
-elf  4
-elf  9
-elf  6
-elf  10
-elf  5
-elf  1
-Ho! Ho! Hoo! Let's go deliver some toys! :D
-Ho! Ho! Hoo! Let's hold the meeting in the study! :D
-Ho! Ho! Hoo! Let's go deliver some toys! :D
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Ho! Ho! Hoo! Let's hold the meeting in the study! :D
-Ho! Ho! Hoo! Let's go deliver some toys! :D
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Ho! Ho! Hoo! Let's hold the meeting in the study! :D
-Ho! Ho! Hoo! Let's go deliver some toys! :D
-Ho! Ho! Hoo! Let's hold the meeting in the study! :D
-Elf  10  meeting in the study
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
-Reindeer  6  delivering toys
+elfInGate =  &{0 0xc42000e1d0}
+elfOutGate =  &{1 0xc42000e1f0}
+reindeerInGate =  &{2 0xc42000e220}
+reindeerOutGate =  &{3 0xc42000e240}
+initial state - 
+&{0 0xc42000e2b0}  =  &{3 3}
+&{1 0xc42000e1f0}  =  &{3 0}
+&{2 0xc42000e220}  =  &{9 0}
+&{3 0xc42000e2f0}  =  &{9 9}
+initial state - 
+&{0 0xc42000e3a0}  =  &{3 1}
+&{1 0xc42000e1f0}  =  &{3 0}
+&{2 0xc42000e220}  =  &{9 0}
+&{3 0xc42000e3d0}  =  &{9 8}

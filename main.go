@@ -42,11 +42,12 @@ import (
 func main() {
 	// for i := 0; i < 100; i++ {
 	// 	fmt.Println("Iteration #", i)
-	// 	TestAssemble1()
+	TestAssemble1()
 	// 	TestAssemble2()
 	// 	fmt.Println()
 	// }
-	SantaRun()
+	// SantaRun()
+	// Test1()
 }
 
 // Test1 tests the basic workflow
@@ -56,24 +57,26 @@ func Test1() {
 	reindeerInGate := NewGate(9)
 	reindeerOutGate := NewGate(9)
 
-	fmt.Println("elfInGate = ", elfInGate)
-	fmt.Println("elfOutGate = ", elfOutGate)
-	fmt.Println("reindeerInGate = ", reindeerInGate)
-	fmt.Println("reindeerOutGate = ", reindeerOutGate)
+	fmt.Println("elfInGate = ", *elfInGate)
+	fmt.Println("elfOutGate = ", *elfOutGate)
+	fmt.Println("reindeerInGate = ", *reindeerInGate)
+	fmt.Println("reindeerOutGate = ", *reindeerOutGate)
 
 	gateCells := make([]*stm.MemoryCell, 0)
 	gateCells = append(gateCells, elfInGate, elfOutGate, reindeerInGate, reindeerOutGate)
 
 	//# initialize the gate's remaining so that they can pass through
-	OperateGate(elfInGate)
-	OperateGate(reindeerOutGate)
+	for _, gateCell := range gateCells {
+		OperateGate(gateCell)
+	}
 	//# initialize the gate's remaining so that they can pass through
 
 	tLog := MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
+			fmt.Println("gatecells = ", gateCells)
 			for _, gcell := range gateCells {
-				gate := t.ReadT(gcell)
-				fmt.Println(gcell, " = ", gate)
+				gate := t.ReadT(gcell).(*Gate)
+				fmt.Println(*gcell, " = ", gate)
 			}
 			return true
 		}).
@@ -88,19 +91,19 @@ func Test1() {
 	PassGate(reindeerOutGate)
 	//# operate
 
-	fmt.Println("initial state - ")
+	fmt.Println("final state - ")
 	MySTM.Exec(tLog)
 }
 
 // TestAssemble1 tests the assembly and validity of the functions for elves
 func TestAssemble1() {
 	elfGroup := NewGroup(1) // group of capacity 1
-	// fmt.Println(elfGroup)
-	MySTM.Display()
-	MySTM.ForkAndExec(NewElf(12, elfGroup))         // fork and execute the transaction in another thread
-	inGateCell, outGateCell := AwaitGroup(elfGroup) // AwaitGroup awaits for the group to be filled atomically - transactionally
-	OperateGate(inGateCell)
-	OperateGate(outGateCell)
+	go func() {
+		inGateCell, outGateCell := AwaitGroup(elfGroup) // AwaitGroup awaits for the group to be filled atomically - transactionally
+		OperateGate(inGateCell)
+		OperateGate(outGateCell)
+	}()
+	MySTM.Exec(NewElf(12, elfGroup))
 }
 
 // TestAssemble2 tests the assembly and validity of the functions for reindeers
@@ -116,32 +119,22 @@ func TestAssemble2() {
 func SantaRun() {
 	elfGroup := NewGroup(3)      // Santa can be woken up by 3 elves
 	reindeerGroup := NewGroup(9) // Santa can be woken up by 9 reindeers
+	elves := make([]*stm.Transaction, 0)
 	for i := 1; i <= 10; i++ {
 		// creates all the elves
-		elf := NewElf(i, elfGroup)
-		go func(elf *stm.Transaction, i int) {
-			fmt.Println("elf ", i)
-			for {
-				// run forever
-				MySTM.Exec(elf)
-			}
-		}(elf, i) // ideal closure
+		elves = append(elves, NewElf(i, elfGroup))
 	}
+	reindeers := make([]*stm.Transaction, 0)
 	for i := 1; i <= 9; i++ {
 		// creates all the reindeers
-		reindeer := NewReindeer(i, reindeerGroup)
-		go func(reindeer *stm.Transaction) {
-			for {
-				// run forever
-				MySTM.Exec(reindeer)
-			}
-		}(reindeer) // ideal closure
+		reindeers = append(reindeers, NewReindeer(i, reindeerGroup))
 	}
-
-	// I'll dedicate the main thread to Santa
+	workReindeers, workElves := Santa(elfGroup, reindeerGroup)
 	for {
-		// run infinitely
-		Santa(elfGroup, reindeerGroup)
+		MySTM.ForkAndExec(reindeers...)
+		MySTM.ForkAndExec(elves...)
+		MySTM.Exec(workReindeers)
+		MySTM.Exec(workElves)
 	}
 }
 
@@ -151,9 +144,10 @@ func SantaRun() {
 // or a group of elves. Once he has made his choice of which group to attend to, he must
 // take them through their task.
 // According to the problem description, a group of reindeers has higher priority than a group of elves.
-func Santa(elfGroupCell *stm.MemoryCell, reindeerGroupCell *stm.MemoryCell) {
+// It returns the two atomic transactions for reindeers and elves ready to be executed
+func Santa(elfGroupCell *stm.MemoryCell, reindeerGroupCell *stm.MemoryCell) (workReindeers, workElves *stm.Transaction) {
 	//# work those reindeers Santa!
-	workReindeers := MySTM.NewT().
+	workReindeers = MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
 			inGateCell, outGateCell := AwaitGroup(reindeerGroupCell)
 			fmt.Println("Ho! Ho! Hoo! Let's go deliver some toys! :D")
@@ -163,9 +157,8 @@ func Santa(elfGroupCell *stm.MemoryCell, reindeerGroupCell *stm.MemoryCell) {
 		}).
 		Done()
 	//# work those reindeers Santa!
-
 	//# work those elves Santa!
-	workElves := MySTM.NewT().
+	workElves = MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
 			inGateCell, outGateCell := AwaitGroup(elfGroupCell)
 			fmt.Println("Ho! Ho! Hoo! Let's hold the meeting in the study! :D")
@@ -175,10 +168,7 @@ func Santa(elfGroupCell *stm.MemoryCell, reindeerGroupCell *stm.MemoryCell) {
 		}).
 		Done()
 	//# work those elves Santa!
-
-	MySTM.Exec(workReindeers) // reindeers get higher precedence
-	MySTM.Exec(workElves)     // elves get lower precedence
-	// for equal precedence, just run them together
+	return workReindeers, workElves
 }
 
 //# Santa's task
@@ -194,11 +184,16 @@ func Santa(elfGroupCell *stm.MemoryCell, reindeerGroupCell *stm.MemoryCell) {
 func NewElf(ID int, groupCell *stm.MemoryCell) (elf *stm.Transaction) {
 	elf = MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
-			group := t.ReadT(groupCell).(*Group) // read transactionally
-			JoinGroup(groupCell)                 // join the group
-			PassGate(group.inGate)               // elf passes through the inGate
-			MeetInStudy(ID)                      // meets with Santa in his study
-			PassGate(group.outGate)              // elf leaves the study and passes out of the outGate
+			inGate, _ := JoinGroup(groupCell) // join the group
+			PassGate(inGate)                  // elf passes through the inGate
+			// wg := new(sync.WaitGroup)
+			// wg.Add(1)
+			// go func() {
+			// 	MeetInStudy(ID)
+			// 	wg.Done()
+			// }() // meets with Santa in his study
+			// wg.Wait()
+			// PassGate(outGate)                       // elf leaves the study and passes out of the outGate
 			return true
 		}).
 		Done()
@@ -211,11 +206,10 @@ func NewElf(ID int, groupCell *stm.MemoryCell) (elf *stm.Transaction) {
 func NewReindeer(ID int, groupCell *stm.MemoryCell) (reindeer *stm.Transaction) {
 	reindeer = MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
-			JoinGroup(groupCell)                 // join the group
-			group := t.ReadT(groupCell).(*Group) // read transactionally
-			PassGate(group.inGate)               // reindeer passes through the inGate
-			DeliverToys(ID)                      // meets with Santa and delivers toys
-			PassGate(group.outGate)              // reindeer leaves the study and passes out of the outGate
+			inGate, _ := JoinGroup(groupCell) // join the group
+			PassGate(inGate)                  // reindeer passes through the inGate
+			DeliverToys(ID)                   // meets with Santa and delivers toys
+			// PassGate(outGate)                       // reindeer leaves the study and passes out of the outGate
 			return true
 		}).
 		Done()
@@ -269,11 +263,12 @@ func NewGroup(capacity int) *stm.MemoryCell {
 
 // JoinGroup lets the helpers join the group. This is a transactional operation. It updates the
 // group in the STM. JoinGroup first checks if the Group is full. If the group is full, the call
-// blocks. Otherwise, it updates its member count and the member is added.
+// blocks. Otherwise, it updates its member count and the member is added. It returns the MemoryCells
+// of the inGate and outGate of the Group.
 //
 // @transactional
-func JoinGroup(groupCell *stm.MemoryCell) {
-	// fmt.Println("Trying to join group = ", groupCell)
+func JoinGroup(groupCell *stm.MemoryCell) (ingateCell, outGateCell *stm.MemoryCell) {
+	fmt.Println("Trying to join group = ", *groupCell)
 	t := MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
 			group := t.ReadT(groupCell).(*Group) // read transactionally
@@ -283,15 +278,21 @@ func JoinGroup(groupCell *stm.MemoryCell) {
 				blockStatus = true // group is full, block
 			} else {
 				// members can be added, add the member - decrement the spacesLeft
-				group.spacesLeft--                        // update the spacesLeft
-				writeStatus := t.WriteT(groupCell, group) // write transactionally to the STM
+				group.spacesLeft--                                  // update the spacesLeft
+				writeStatus := t.WriteT(groupCell, stm.Data(group)) // write transactionally to the STM
+				if writeStatus {
+					updatedGroup := t.ReadT(groupCell).(*Group)
+					ingateCell = updatedGroup.inGate
+					outGateCell = updatedGroup.outGate
+				}
 				blockStatus = false || !writeStatus
 			}
 			return !blockStatus
 		}).
 		Done()
 	MySTM.Exec(t)
-	// fmt.Println("Joined group = ", groupCell)
+	fmt.Println("Joined group = ", *groupCell)
+	return ingateCell, outGateCell
 }
 
 // AwaitGroup makes new Gates when it re-initializes the Group. This ensures that
@@ -301,20 +302,20 @@ func JoinGroup(groupCell *stm.MemoryCell) {
 //
 // @transactional
 func AwaitGroup(groupCell *stm.MemoryCell) (inGateCell, outGateCell *stm.MemoryCell) {
-	// fmt.Println("Awaiting group = ", groupCell)
+	fmt.Println("Awaiting group = ", *groupCell)
 	t := MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
 			group := t.ReadT(groupCell).(*Group) // read transactionally
+			inGateCell = group.inGate            // to be returned
+			outGateCell = group.outGate          // to be returned
 			blockStatus := false                 // signifies the blocking status, true means the call should block, otherwise moves through
-			if group.spacesLeft == 0 {
+			if group.spacesLeft <= 0 {
 				// the group is full and Santa can start processing, meet with elves
 				// or go deliver gifts with the reindeers.
-				group.spacesLeft = group.capacity         // reset the spaces left
-				group.inGate = NewGate(group.capacity)    // make new gate
-				group.outGate = NewGate(group.capacity)   // make new gate
-				writeStatus := t.WriteT(groupCell, group) // update the group transactionally
-				inGateCell = group.inGate                 // to be returned
-				outGateCell = group.outGate               // to be returned
+				group.spacesLeft = group.capacity                   // restore spaces_left
+				group.inGate = NewGate(group.capacity)              // new ingate
+				group.outGate = NewGate(group.capacity)             // new outgate
+				writeStatus := t.WriteT(groupCell, stm.Data(group)) // update the group transactionally
 				blockStatus = false || !writeStatus
 			} else {
 				// group is not full, so Santa needs to wait
@@ -326,7 +327,7 @@ func AwaitGroup(groupCell *stm.MemoryCell) (inGateCell, outGateCell *stm.MemoryC
 		}).
 		Done()
 	MySTM.Exec(t)
-	// fmt.Println("Done Awaiting group = ", groupCell)
+	fmt.Println("Done Awaiting group = ", *groupCell)
 	return inGateCell, outGateCell
 }
 
@@ -365,7 +366,7 @@ func NewGate(capacity int) *stm.MemoryCell {
 // succeeds. Similar to blocking?
 // @transactional
 func PassGate(gateCell *stm.MemoryCell) {
-	// fmt.Println("Passing through gate = ", gateCell)
+	fmt.Println("Passing through gate = ", *gateCell)
 	t := MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
 			gate := t.ReadT(gateCell).(*Gate) // read from MemoryCell transactionally
@@ -375,30 +376,30 @@ func PassGate(gateCell *stm.MemoryCell) {
 				// best case would be fail this transaction and retry
 				blockStatus = true
 			} else {
-				gate.remaining--                        // update the remaining count
-				writeStatus := t.WriteT(gateCell, gate) // write the updated gate's content
-				blockStatus = false || !writeStatus     // only successful if writeStatus is true
+				gate.remaining--                                  // update the remaining count
+				writeStatus := t.WriteT(gateCell, stm.Data(gate)) // write the updated gate's content
+				blockStatus = false || !writeStatus               // only successful if writeStatus is true
 			}
 			return !blockStatus
 		}).
 		Done()
 	MySTM.Exec(t) // execute the transaction, this will block the main thread?
-	// fmt.Println("Passed through gate = ", gateCell)
+	fmt.Println("Passed through gate = ", *gateCell)
 }
 
 // OperateGate is used by Santa to reset the remaining capacity of the gate back to n or capacity.
 // It takes in a stm.MemoryCell that contains the Gate inside it.
 func OperateGate(gateCell *stm.MemoryCell) {
-	// fmt.Println("Operating gate = ", gateCell)
+	fmt.Println("Operating gate = ", *gateCell)
 	t := MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
-			gate := t.ReadT(gateCell).(*Gate) // read transactionally
-			gate.remaining = gate.capacity    // restore to full capacity
-			return t.WriteT(gateCell, gate)   // write transactionally
+			gate := t.ReadT(gateCell).(*Gate)         // read transactionally
+			gate.remaining = gate.capacity            // restore to full capacity
+			return t.WriteT(gateCell, stm.Data(gate)) // write transactionally
 		}).
 		Done()
 	MySTM.Exec(t)
-	// fmt.Println("Operated gate = ", gateCell)
+	fmt.Println("Operated gate = ", *gateCell)
 }
 
 //# Gate
