@@ -1,14 +1,21 @@
-elfInGate =  &{0 0xc42000e1d0}
-elfOutGate =  &{1 0xc42000e1f0}
-reindeerInGate =  &{2 0xc42000e220}
-reindeerOutGate =  &{3 0xc42000e240}
-initial state - 
-&{0 0xc42000e2b0}  =  &{3 3}
-&{1 0xc42000e1f0}  =  &{3 0}
-&{2 0xc42000e220}  =  &{9 0}
-&{3 0xc42000e2f0}  =  &{9 9}
-initial state - 
-&{0 0xc42000e3a0}  =  &{3 1}
-&{1 0xc42000e1f0}  =  &{3 0}
-&{2 0xc42000e220}  =  &{9 0}
-&{3 0xc42000e3d0}  =  &{9 8}
+2017/12/02 03:37:11 Trying to join group =  {2 0xc42000e220}
+2017/12/02 03:37:11 Trying to join group =  {2 0xc42000e220}
+2017/12/02 03:37:11 Trying to join group =  {2 0xc42000e220}
+2017/12/02 03:37:11 Trying to join group =  {2 0xc42000e220}
+2017/12/02 03:37:11 Ho! Ho! Hoo! Let's hold the meeting in the study! :D
+2017/12/02 03:37:11 ----------------------------------------------------
+2017/12/02 03:37:11 Trying to join group =  {2 0xc42000e220}
+2017/12/02 03:37:11 Trying to join group =  {2 0xc42000e220}
+2017/12/02 03:37:11 Joined group =  {2 0xc42000e3c0}
+2017/12/02 03:37:11 Trying to join group =  {2 0xc42000e220}
+2017/12/02 03:37:11 Trying to join group =  {2 0xc42000e220}
+2017/12/02 03:37:11 Trying to join group =  {2 0xc42000e220}
+2017/12/02 03:37:11 Trying to join group =  {2 0xc42000e220}
+2017/12/02 03:37:11 Joined group =  {2 0xc42009a030}
+2017/12/02 03:37:11 Elf 1 meeting in the study
+2017/12/02 03:37:11 Joined group =  {2 0xc42009e0a0}
+2017/12/02 03:37:11 Elf 6 meeting in the study
+2017/12/02 03:37:11 Joined group =  {2 0xc4200b4030}
+2017/12/02 03:37:11 Elf 2 meeting in the study
+2017/12/02 03:37:11 Joined group =  {2 0xc42009a080}
+2017/12/02 03:37:11 Joined group =  {2 0xc4200b4080}
