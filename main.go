@@ -16,7 +16,11 @@ Santa repeatedly sleeps until wakened by either all of his nine reindeer, back f
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"log"
+	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/sidmishraw/stm-reworked/stm"
@@ -126,14 +130,40 @@ func SantaRun() {
 		// creates all the elves
 		go Forever(NewElf(i, elfGroup)) // spawn - fork and go on forever
 	}
-	// for i := 1; i <= 9; i++ {
-	// 	// creates all the reindeers
-	// 	go Forever(NewReindeer(i, reindeerGroup)) // spawn - fork and go on forever
-	// }
-	for i := 0; i < 1; i++ {
-		Santa(elfGroup, reindeerGroup)
+	for i := 1; i <= 9; i++ {
+		// creates all the reindeers
+		go Forever(NewReindeer(i, reindeerGroup)) // spawn - fork and go on forever
 	}
-	time.Sleep(5 * time.Second)
+	log.Println("Beginning Santa's workplace simulation ~~~")
+	workReindeers, reindeerChannel, workElves, elfChannel := Santa(elfGroup, reindeerGroup) // just to reuse the transactions
+	for i := 0; i < 3; i++ {
+		//# RUN!
+		MySTM.ForkAndExec(workReindeers, workElves)
+		//# RUN!
+		//# Selection logic
+		// The selection logic, as per the problem description
+		// reindeers are given higher precedence, hence I wait for them to write
+		// to the reindeer channel before proceeding forward
+		// then I slip in a thread sleep to give the elves some time to reassemble.
+		if rGates := <-reindeerChannel; len(rGates) == 2 {
+			MySTM.Log("Ho! Ho! Hoo! Let's go deliver some toys! :D")
+			MySTM.Log("-------------------------------------------")
+			for _, gatecell := range rGates {
+				OperateGate(gatecell) // operate the gates
+			}
+			time.Sleep(5 * time.Second) // for pretty printing
+		}
+		if eGates := <-elfChannel; len(eGates) == 2 {
+			MySTM.Log("Ho! Ho! Hoo! Let's hold the meeting in the study! :D")
+			MySTM.Log("----------------------------------------------------")
+			for _, gatecell := range eGates {
+				OperateGate(gatecell) // operate the gates
+			}
+			time.Sleep(5 * time.Second) // just for pretty printing
+		}
+		//# Selection logic
+	}
+	log.Println("Santa is done for the day. Bye Santa ~~~")
 }
 
 //# Santa's task
@@ -142,33 +172,28 @@ func SantaRun() {
 // or a group of elves. Once he has made his choice of which group to attend to, he must
 // take them through their task.
 // According to the problem description, a group of reindeers has higher priority than a group of elves.
-func Santa(elfGroupCell *stm.MemoryCell, reindeerGroupCell *stm.MemoryCell) {
+func Santa(elfGroupCell *stm.MemoryCell, reindeerGroupCell *stm.MemoryCell) (workReindeers *stm.Transaction, reindeerChannel chan [2]*stm.MemoryCell, workElves *stm.Transaction, elfChannel chan [2]*stm.MemoryCell) {
+	reindeerChannel = make(chan [2]*stm.MemoryCell) // channel holding the reindeer gates
+	elfChannel = make(chan [2]*stm.MemoryCell)      // channel holding the elven gates
 	//# work those reindeers Santa!
-	// workReindeers := MySTM.NewT().
-	// 	Do(func(t *stm.Transaction) bool {
-	// 		inGateCell, outGateCell := AwaitGroup(reindeerGroupCell)
-	// 		MySTM.Log("Ho! Ho! Hoo! Let's go deliver some toys! :D")
-	// 		MySTM.Log("-------------------------------------------")
-	// 		OperateGate(inGateCell)
-	// 		OperateGate(outGateCell)
-	// 		return true
-	// 	}).
-	// 	Done()
+	workReindeers = MySTM.NewT().
+		Do(func(t *stm.Transaction) bool {
+			inGateCell, outGateCell := AwaitGroup(reindeerGroupCell)
+			reindeerChannel <- [2]*stm.MemoryCell{inGateCell, outGateCell} // dump into the reindeer channel
+			return true
+		}).
+		Done()
 	//# work those reindeers Santa!
 	//# work those elves Santa!
-	workElves := MySTM.NewT().
+	workElves = MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
 			inGateCell, outGateCell := AwaitGroup(elfGroupCell)
-			MySTM.Log("Ho! Ho! Hoo! Let's hold the meeting in the study! :D")
-			MySTM.Log("----------------------------------------------------")
-			OperateGate(inGateCell)
-			OperateGate(outGateCell)
+			elfChannel <- [2]*stm.MemoryCell{inGateCell, outGateCell} // dump into the elf channel
 			return true
 		}).
 		Done()
 	//# work those elves Santa!
-	// MySTM.Exec(workReindeers)
-	MySTM.Exec(workElves)
+	return workReindeers, reindeerChannel, workElves, elfChannel
 }
 
 //# Santa's task
@@ -187,8 +212,7 @@ func NewElf(ID int, groupCell *stm.MemoryCell) (elf *stm.Transaction) {
 			inGate, outGate := JoinGroup(groupCell) // join the group
 			PassGate(inGate)                        // elf passes through the inGate
 			MeetInStudy(ID)                         // Meets with Santa in the Study
-			time.Sleep(5 * time.Second)
-			PassGate(outGate) // elf leaves the study and passes out of the outGate
+			PassGate(outGate)                       // elf leaves the study and passes out of the outGate
 			return true
 		}).
 		Done()
@@ -353,7 +377,7 @@ func NewGate(capacity int) *stm.MemoryCell {
 // succeeds. Similar to blocking?
 // @transactional
 func PassGate(gateCell *stm.MemoryCell) {
-	// MySTM.Log("Passing through gate = ", *gateCell)
+	// MySTM.Log(getGID(), " Passing through gate = ", *gateCell)
 	t := MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
 			gate := t.ReadT(gateCell).(*Gate) // read from MemoryCell transactionally
@@ -369,7 +393,7 @@ func PassGate(gateCell *stm.MemoryCell) {
 		}).
 		Done()
 	MySTM.Exec(t) // execute the transaction, this will block the main thread?
-	// MySTM.Log("Passed through gate = ", *gateCell)
+	// MySTM.Log(getGID(), " Passed through gate = ", *gateCell)
 }
 
 // OperateGate is used by Santa to reset the remaining capacity of the gate back to n or capacity.
@@ -394,21 +418,31 @@ func OperateGate(gateCell *stm.MemoryCell) {
 // Check evaluates the expression and verifies if the operation was successful or not.
 // If the expression was not successful, the Check blocks.
 func Check(expression func() bool) {
-	// MySTM.Log("Checking --")
+	// MySTM.Log("Goroutine#", getGID())
 	checkingT := MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
 			return expression() // the transaction succeeds if expression evaluates to true else it blocks
 		}).
 		Done()
 	MySTM.Exec(checkingT)
-	// MySTM.Log("Finished Checking --")
+	// MySTM.Log("Goroutine#", getGID())
 }
 
 //# Transactional checks
 
 // Forever runs the transaction forever.
 func Forever(t *stm.Transaction) {
-	for i := 0; i < 1; i++ {
+	for {
 		MySTM.Exec(t)
 	}
+}
+
+// getGID fetches the goroutine's ID from the stacktrace
+func getGID() uint64 {
+	b := make([]byte, 64)
+	b = b[:runtime.Stack(b, false)]
+	b = bytes.TrimPrefix(b, []byte("goroutine "))
+	b = b[:bytes.IndexByte(b, ' ')]
+	n, _ := strconv.ParseUint(string(b), 10, 64)
+	return n
 }
