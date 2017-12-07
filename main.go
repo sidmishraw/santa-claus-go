@@ -49,11 +49,11 @@ import (
 func main() {
 	// for i := 0; i < 100; i++ {
 	// 	MySTM.Log("Iteration #", i)
-	// TestAssemble1()
+	TestAssemble1()
 	// TestAssemble2()
 	// 	MySTM.Log()
 	// }
-	SantaRun()
+	// SantaRun()
 	// Test1()
 }
 
@@ -82,7 +82,8 @@ func Test1() {
 		Do(func(t *stm.Transaction) bool {
 			MySTM.Log("gatecells = ", gateCells)
 			for _, gcell := range gateCells {
-				gate := t.ReadT(gcell).(*Gate)
+				gate := new(Gate)
+				t.ReadT(gcell, gate)
 				MySTM.Log(*gcell, " = ", gate)
 			}
 			return true
@@ -261,22 +262,21 @@ var MySTM = stm.NewSTM()
 // immediately re-initialized with fresh gates so that another group of eager elves can start
 // assembling.
 type Group struct {
-	capacity   int
-	spacesLeft int
-	inGate     *stm.MemoryCell `name:"inGate" type:"*Gate"`
-	outGate    *stm.MemoryCell `name:"outGate" type:"*Gate"`
+	Capacity   int
+	SpacesLeft int
+	InGate     *stm.MemoryCell `name:"inGate" type:"*Gate"`
+	OutGate    *stm.MemoryCell `name:"outGate" type:"*Gate"`
 }
 
 // NewGroup makes a new group of the desired capacity in the STM and returns the stm.MemoryCell
 // that holds the new group.
 func NewGroup(capacity int) *stm.MemoryCell {
 	group := new(Group)
-	group.capacity = capacity   // the groups capacity
-	group.spacesLeft = capacity // the group is initially empty,hence the spacesLeft = capacity, it gets decrement with each addition
-	group.inGate = NewGate(capacity)
-	group.outGate = NewGate(capacity)
-	groupData := stm.Data(group)
-	groupCell := MySTM.MakeMemCell(&groupData)
+	group.Capacity = capacity   // the groups capacity
+	group.SpacesLeft = capacity // the group is initially empty,hence the spacesLeft = capacity, it gets decrement with each addition
+	group.InGate = NewGate(capacity)
+	group.OutGate = NewGate(capacity)
+	groupCell := MySTM.MakeMemCell(group)
 	return groupCell
 }
 
@@ -290,17 +290,20 @@ func JoinGroup(groupCell *stm.MemoryCell) (ingateCell, outGateCell *stm.MemoryCe
 	// MySTM.Log("Trying to join group = ", *groupCell)
 	t := MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
-			group := t.ReadT(groupCell).(*Group) // read transactionally
+			group := new(Group)
+			t.ReadT(groupCell, group) // read transactionally
 			checkExpression := func() bool {
-				if group.spacesLeft <= 0 {
+				if group.SpacesLeft <= 0 {
 					return false // block, since no spaces remaining in the group, the new members cannot be added
 				}
 				return true // pass through
 			}
-			Check(checkExpression)                      // blocks till checkExpression evaluates to true
-			group.spacesLeft--                          // update the spacesLeft
-			ingateCell = group.inGate                   // ingate cell
-			outGateCell = group.outGate                 // out gate cell
+			if !t.IsScanning {
+				Check(checkExpression) // blocks till checkExpression evaluates to true
+			}
+			group.SpacesLeft--                          // update the spacesLeft
+			ingateCell = group.InGate                   // ingate cell
+			outGateCell = group.OutGate                 // out gate cell
 			return t.WriteT(groupCell, stm.Data(group)) // write transactionally to the STM
 		}).
 		Done()
@@ -319,22 +322,25 @@ func AwaitGroup(groupCell *stm.MemoryCell) (inGateCell, outGateCell *stm.MemoryC
 	// MySTM.Log("Awaiting group = ", *groupCell)
 	t := MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
-			group := t.ReadT(groupCell).(*Group) // read transactionally
-			inGateCell = group.inGate            // to be returned
-			outGateCell = group.outGate          // to be returned
+			group := new(Group)
+			t.ReadT(groupCell, group)   // read transactionally
+			inGateCell = group.InGate   // to be returned
+			outGateCell = group.OutGate // to be returned
 			checkExpression := func() bool {
-				if group.spacesLeft <= 0 {
+				if group.SpacesLeft <= 0 {
 					return true // go through
 				}
 				return false // block
 			}
-			Check(checkExpression) // blocks until checkExpression evaluates to true
+			if !t.IsScanning {
+				Check(checkExpression) // blocks until checkExpression evaluates to true
+			}
 			// the group is full and Santa can start processing, meet with elves
 			// or go deliver gifts with the reindeers.
-			group.spacesLeft = group.capacity           // restore spaces_left
-			group.inGate = NewGate(group.capacity)      // new ingate
-			group.outGate = NewGate(group.capacity)     // new outgate
-			return t.WriteT(groupCell, stm.Data(group)) // update the group transactionally
+			group.SpacesLeft = group.Capacity       // restore spaces_left
+			group.InGate = NewGate(group.Capacity)  // new ingate
+			group.OutGate = NewGate(group.Capacity) // new outgate
+			return t.WriteT(groupCell, group)       // update the group transactionally
 		}).
 		Done()
 	MySTM.Exec(t)
@@ -353,8 +359,8 @@ func AwaitGroup(groupCell *stm.MemoryCell) (inGateCell, outGateCell *stm.MemoryC
 // A Gate is created with zero remaining capacity, so that no helpers can pass through it.
 // Santa opens the gate with `operateGate`, which sets its remaining capacity back to n.
 type Gate struct {
-	capacity  int
-	remaining int
+	Capacity  int
+	Remaining int
 }
 
 // NewGate makes a new Gate of the given capacity and 0 remaining capacity.
@@ -362,10 +368,9 @@ type Gate struct {
 // Now, the value of this structure can only be accessed inside a `stm.TransactionContext`.
 func NewGate(capacity int) *stm.MemoryCell {
 	gate := new(Gate)
-	gate.capacity = capacity
-	gate.remaining = 0
-	gateData := stm.Data(gate) // convert into `stm.Data` to store in a `stm.MemoryCell`
-	return MySTM.MakeMemCell(&gateData)
+	gate.Capacity = capacity
+	gate.Remaining = 0
+	return MySTM.MakeMemCell(gate)
 }
 
 // PassGate allows the helper to pass through the gate. When a helper passes through
@@ -380,16 +385,20 @@ func PassGate(gateCell *stm.MemoryCell) {
 	// MySTM.Log(getGID(), " Passing through gate = ", *gateCell)
 	t := MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
-			gate := t.ReadT(gateCell).(*Gate) // read from MemoryCell transactionally
+			gate := new(Gate)
+			t.ReadT(gateCell, gate) // read from MemoryCell transactionally
 			checkingExpression := func() bool {
-				if gate.remaining <= 0 {
+				if gate.Remaining <= 0 {
 					return false // block
 				}
 				return true // go through
 			}
-			Check(checkingExpression)                 // blocks till checkingExpression is false
-			gate.remaining--                          // update the remaining count
-			return t.WriteT(gateCell, stm.Data(gate)) // write the updated gate's content
+			if !t.IsScanning {
+				// only check when the transaction is not running in Scan mode
+				Check(checkingExpression) // blocks till checkingExpression is false
+			}
+			gate.Remaining--                // update the remaining count
+			return t.WriteT(gateCell, gate) // write the updated gate's content
 		}).
 		Done()
 	MySTM.Exec(t) // execute the transaction, this will block the main thread?
@@ -402,9 +411,10 @@ func OperateGate(gateCell *stm.MemoryCell) {
 	// MySTM.Log("Operating gate = ", *gateCell)
 	t := MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
-			gate := t.ReadT(gateCell).(*Gate)         // read transactionally
-			gate.remaining = gate.capacity            // restore to full capacity
-			return t.WriteT(gateCell, stm.Data(gate)) // write transactionally
+			gate := new(Gate)
+			t.ReadT(gateCell, gate)         // read transactionally
+			gate.Remaining = gate.Capacity  // restore to full capacity
+			return t.WriteT(gateCell, gate) // write transactionally
 		}).
 		Done()
 	MySTM.Exec(t)
@@ -421,7 +431,11 @@ func Check(expression func() bool) {
 	// MySTM.Log("Goroutine#", getGID())
 	checkingT := MySTM.NewT().
 		Do(func(t *stm.Transaction) bool {
-			return expression() // the transaction succeeds if expression evaluates to true else it blocks
+			status := true
+			if !t.IsScanning {
+				status = expression()
+			}
+			return status // the transaction succeeds if expression evaluates to true else it blocks
 		}).
 		Done()
 	MySTM.Exec(checkingT)

@@ -184,6 +184,10 @@ is ugly and inelegant :(
 2017/12/02 15:16:22 Santa is done for the day. Bye Santa ~~~
 ```
 
+### Changelog v0.0.2
+
+* Switched versions of the underlying STM
+
 ### References
 
 [[1]](https://www.schoolofhaskell.com/school/advanced-haskell/beautiful-concurrency/4-the-santa-claus-problem)
